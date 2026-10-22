@@ -188,7 +188,7 @@ app.get('/', (req, res) => {
             </div>
             <div class="btn-grid btn-grid-2">
               <a href="/tutorial" class="btn-secondary" aria-label="View setup guide">Setup guide</a>
-              <a href="/logs" class="btn-secondary" aria-label="View bot logs">View logs</a>
+              <a href="/logs" class="btn-secondary" aria-label="View logs">View logs</a>
             </div>
           </section>
 
@@ -1010,7 +1010,7 @@ app.post("/command", express.json(), (req, res) => {
   if (cmd === "/help") {
     const lines = [
       "Available commands:",
-      "  /help          - Show this help message",
+      "  /help          - Show all available commands",
       "  /pos           - Show bot's current coordinates",
       "  /status        - Show bot connection status",
       "  /list          - Ask server for player list",
@@ -1225,6 +1225,32 @@ function createBot() {
 
     bot.loadPlugin(pathfinder);
 
+    // Decline an optional server resource pack. The bot is a protocol client,
+    // so it sends the protocol status instead of clicking a GUI button.
+    // For modern Java protocol versions, the response must include the pack UUID.
+    bot._client.on("add_resource_pack", (packet) => {
+      addLog("[Bot] Resource-pack request received.");
+
+      try {
+        const rawUuid = packet && packet.uuid;
+        const packUuid = rawUuid == null ? null : String(rawUuid);
+
+        if (!packUuid || packUuid === "[object Object]") {
+          addLog("[Bot] Cannot decline resource pack: valid pack UUID is missing.");
+          return;
+        }
+
+        bot._client.write("resource_pack_receive", {
+          uuid: packUuid,
+          result: 1, // DECLINED
+        });
+
+        addLog("[Bot] Resource pack declined (DECLINED status sent).");
+      } catch (err) {
+        addLog(`[Bot] Resource-pack decline failed: ${err.message}`);
+      }
+    });
+
     // FIX: connection timeout - end the old bot before reconnecting to avoid ghost bots
     clearBotTimeouts();
     connectionTimeoutId = setTimeout(() => {
@@ -1297,9 +1323,8 @@ function createBot() {
     });
 
     // FIX: 'kicked' fires before 'end'. Remove the scheduleReconnect from 'kicked'
-    // so that 'end' is the single source of reconnect truth, preventing double-trigger.
+    // so that 'end' is the single source of reconnect truth.
     bot.on("kicked", (reason) => {
-      // FIX: stringify reason if it's an object to make it readable in logs
       const kickReason =
         typeof reason === "object" ? JSON.stringify(reason) : reason;
       addLog(`[Bot] Kicked: ${kickReason}`);
@@ -1338,7 +1363,7 @@ function createBot() {
       addLog(`[Bot] Disconnected: ${reason || "Unknown reason"}`);
       botState.connected = false;
       clearAllIntervals();
-      spawnHandled = false; // reset for next connection
+      spawnHandled = false;
 
       if (
         config.discord &&
